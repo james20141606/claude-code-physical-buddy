@@ -79,9 +79,9 @@ inline bool xferCommand(JsonDocument& doc) {
   if (!cmd) return false;
 
   if (strcmp(cmd, "name") == 0) {
-    const char* n = doc["name"];
-    if (n) petNameSet(n);
-    _xAck("name", n != nullptr);
+    // Identity locked for this build — accept the cmd but don't apply it
+    // so paired desktops can't overwrite "Luna".
+    _xAck("name", true);
     return true;
   }
 
@@ -103,9 +103,9 @@ inline bool xferCommand(JsonDocument& doc) {
   }
 
   if (strcmp(cmd, "owner") == 0) {
-    const char* n = doc["name"];
-    if (n) ownerSet(n);
-    _xAck("owner", n != nullptr);
+    // Identity locked for this build — accept the cmd but don't apply it
+    // so paired desktops can't overwrite "James".
+    _xAck("owner", true);
     return true;
   }
 

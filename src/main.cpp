@@ -443,10 +443,14 @@ static void drawClock() {
     spr.setTextSize(4); spr.setTextColor(p.text, p.bg);    spr.drawString(hm, CX, 170);
     spr.setTextSize(2); spr.setTextColor(p.textDim, p.bg); spr.drawString(ss, CX, 210);
     spr.setTextSize(2);                                     spr.drawString(dl, CX, 240);
-    // IMU on-die temp sensor.
-    float tempC = 0.0f;
-    M5.Imu.getTemp(&tempC);
-    char ts[12]; snprintf(ts, sizeof(ts), "%dC", (int)tempC);
+    // IMU on-die temp sensor, cached 30s to avoid jitter on screen.
+    static float   _clkTempCache = 0.0f;
+    static uint32_t _clkTempLast = 0;
+    if (_clkTempLast == 0 || millis() - _clkTempLast > 30000) {
+      M5.Imu.getTemp(&_clkTempCache);
+      _clkTempLast = millis();
+    }
+    char ts[12]; snprintf(ts, sizeof(ts), "%dC", (int)_clkTempCache);
     spr.setTextSize(2);                                     spr.drawString(ts, CX, 270);
     spr.setTextDatum(TL_DATUM);
     spr.setTextSize(1);
@@ -559,13 +563,22 @@ void drawPasskey() {
 
 void drawInfo() {
   const Palette& p = characterPalette();
-  const int TOP = 70;
+  const int TOP = 50;
   spr.fillRect(0, TOP, W, H - TOP, p.bg);
-  spr.setTextSize(1);
   int y = TOP + 2;
+  // ln() prints body lines at size 2 (12×16 glyphs). y advances by 18 per
+  // line — tight enough to fit ~14 body lines on the 320-tall screen.
   auto ln = [&](const char* fmt, ...) {
-    char b[32]; va_list a; va_start(a, fmt); vsnprintf(b, sizeof(b), fmt, a); va_end(a);
-    spr.setCursor(4, y); spr.print(b); y += 8;
+    char b[40]; va_list a; va_start(a, fmt); vsnprintf(b, sizeof(b), fmt, a); va_end(a);
+    spr.setTextSize(2);
+    spr.setCursor(4, y); spr.print(b); y += 18;
+  };
+  // lns() prints a "small" secondary line at size 1 (6×8) for tertiary
+  // info that wouldn't fit at size 2. Used sparingly.
+  auto lns = [&](const char* fmt, ...) {
+    char b[40]; va_list a; va_start(a, fmt); vsnprintf(b, sizeof(b), fmt, a); va_end(a);
+    spr.setTextSize(1);
+    spr.setCursor(4, y); spr.print(b); y += 10;
   };
 
   if (infoPage == 0) {
@@ -632,14 +645,14 @@ void drawInfo() {
     bool full = usb && vBat_mV > 4100 && iBat_mA < 10;
 
     spr.setTextColor(p.text, p.bg);
-    spr.setTextSize(2);
+    spr.setTextSize(3);
     spr.setCursor(4, y);
     spr.printf("%d%%", pct);
-    spr.setTextSize(1);
+    spr.setTextSize(2);
     spr.setTextColor(full ? GREEN : (charging ? HOT : p.textDim), p.bg);
-    spr.setCursor(60, y + 4);
+    spr.setCursor(96, y + 6);
     spr.print(full ? "full" : (charging ? "charging" : (usb ? "usb" : "battery")));
-    y += 20;
+    y += 32;
 
     spr.setTextColor(p.textDim, p.bg);
     ln("  battery  %d.%02dV", vBat_mV/1000, (vBat_mV%1000)/10);
@@ -656,11 +669,16 @@ void drawInfo() {
     ln("  heap     %uKB", ESP.getFreeHeap() / 1024);
     ln("  bright   %u/4", brightLevel);
     ln("  bt       %s", settings().bt ? (dataBtActive() ? "linked" : "on") : "off");
-    // MPU6886 (IMU) has an on-die temperature sensor; closer to ambient
-    // than the ESP32 core temperature (which often reads 50-80°C).
-    float imuTemp = 0.0f;
-    M5.Imu.getTemp(&imuTemp);
-    ln("  temp     %dC", (int)imuTemp);
+    // MPU6886 IMU on-die sensor (NOT ambient — chip self-heat puts the
+    // typical reading 10-20°C above room temp). Cache for 30s so the
+    // value stops jittering visibly on screen.
+    static float   _imuTempCache = 0.0f;
+    static uint32_t _imuTempLast = 0;
+    if (_imuTempLast == 0 || millis() - _imuTempLast > 30000) {
+      M5.Imu.getTemp(&_imuTempCache);
+      _imuTempLast = millis();
+    }
+    ln("  temp     %dC (chip)", (int)_imuTempCache);
 
   } else if (infoPage == 4) {
     _infoHeader(p, y, "BLUETOOTH", infoPage);

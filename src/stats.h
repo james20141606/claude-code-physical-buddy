@@ -214,26 +214,11 @@ static char _petName[24] = "Luna";
 static char _ownerName[32] = "James";
 
 inline void petNameLoad() {
-  _prefs.begin("buddy", false);
-  _prefs.getString("petname", _petName, sizeof(_petName));
-  _prefs.getString("owner", _ownerName, sizeof(_ownerName));
-  // Build-revision migration: if this is the first boot of this build,
-  // overwrite whatever the upstream bridge previously stored (e.g., a
-  // macOS account name like "Isabella") with the build's defaults.
-  // Bumping BREV resets owner/petname on next flash. brev key persists.
-  const uint8_t BREV = 1;
-  uint8_t storedBrev = _prefs.getUChar("brev", 0);
-  if (storedBrev < BREV) {
-    strcpy(_petName, "Luna");
-    strcpy(_ownerName, "James");
-    _prefs.putString("petname", _petName);
-    _prefs.putString("owner", _ownerName);
-    _prefs.putUChar("brev", BREV);
-  } else {
-    if (!_petName[0])   strcpy(_petName, "Luna");
-    if (!_ownerName[0]) strcpy(_ownerName, "James");
-  }
-  _prefs.end();
+  // Locked identity for this build: ignore NVS entirely. The bridge's
+  // owner/name commands are also stubbed out in xfer.h, so even paired
+  // sessions can't override these values. To rename, edit and reflash.
+  strcpy(_petName, "Luna");
+  strcpy(_ownerName, "James");
 }
 
 // Strip JSON-breaking chars — these names go into a printf'd JSON string
