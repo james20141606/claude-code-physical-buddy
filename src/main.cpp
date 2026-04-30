@@ -912,53 +912,50 @@ static void drawPetStats(const Palette& p) {
 }
 
 // Page 1 = mechanics (MOOD/FED/ENERGY), page 2 = controls.
+// Inverted hierarchy: orange section labels stay small (size 1) so the
+// white body bullets at size 2 carry the visual weight — matches the
+// rebalance on page 0 where mood/fed/energy labels are also size 1.
 static void drawPetHowTo(const Palette& p, uint8_t subPage) {
   const int TOP = PET_TOP;
   spr.fillRect(0, TOP, W, H - TOP, p.bg);
-  spr.setTextSize(1);
   // Skip past the PET header (drawn AFTER this function returns) by
-  // reserving header_height + gap. PET_HEADER_SZ * 8 + 4 covers both
-  // the size-1 (Plus) and size-2 (Core2) header heights.
+  // reserving header_height + gap.
   int y = TOP + 2 + PET_HEADER_SZ * 8 + 6;
-  auto ln = [&](uint16_t c, const char* s) {
-    spr.setTextColor(c, p.bg); spr.setCursor(6, y); spr.print(s); y += 11;
+  // Body bullet at size 2 — the readable explanation text.
+  auto bullet = [&](uint16_t c, const char* s) {
+    spr.setTextSize(2);
+    spr.setTextColor(c, p.bg); spr.setCursor(6, y); spr.print(s); y += 18;
+  };
+  // Small orange section label — visual cue, not the focus.
+  auto label = [&](const char* s) {
+    spr.setTextSize(1);
+    spr.setTextColor(p.body, p.bg); spr.setCursor(6, y); spr.print(s); y += 11;
   };
   auto gap = [&]() { y += 6; };
 
   if (subPage == 0) {
-    spr.setTextSize(2);
-    spr.setTextColor(p.body, p.bg);
-    spr.setCursor(6, y); spr.print("MOOD"); y += 18;
-    spr.setTextSize(1);
-    ln(p.textDim, " approve fast = up");
-    ln(p.textDim, " deny lots = down"); gap();
+    label("MOOD");
+    bullet(p.textDim, " approve fast = up");
+    bullet(p.textDim, " deny lots = down"); gap();
 
-    spr.setTextSize(2);
-    spr.setTextColor(p.body, p.bg);
-    spr.setCursor(6, y); spr.print("FED"); y += 18;
-    spr.setTextSize(1);
-    ln(p.textDim, " 50K tokens =");
-    ln(p.textDim, " level up + confetti"); gap();
+    label("FED");
+    bullet(p.textDim, " 50K tokens lvl up");
+    bullet(p.textDim, " + confetti"); gap();
 
-    spr.setTextSize(2);
-    spr.setTextColor(p.body, p.bg);
-    spr.setCursor(6, y); spr.print("ENERGY"); y += 18;
-    spr.setTextSize(1);
-    ln(p.textDim, " face-down to nap");
-    ln(p.textDim, " refills to full");
+    label("ENERGY");
+    bullet(p.textDim, " face-down = nap");
+    bullet(p.textDim, " refills to full");
   } else {
-    spr.setTextSize(2);
-    spr.setTextColor(p.body, p.bg);
-    spr.setCursor(6, y); spr.print("CONTROLS"); y += 22;
-    spr.setTextSize(1);
-    ln(p.textDim, "idle 30s = screen off");
-    ln(p.textDim, "any button = wake"); gap();
-    ln(p.textDim, "A: cycle screens");
-    ln(p.textDim, "B: next page / deny");
-    ln(p.textDim, "hold A: menu"); gap();
-    ln(p.textDim, "shake = dizzy");
-    ln(p.textDim, "face-down = nap");
+    label("CONTROLS");
+    bullet(p.textDim, "idle 30s = sleep");
+    bullet(p.textDim, "button = wake"); gap();
+    bullet(p.textDim, "A: cycle screens");
+    bullet(p.textDim, "B: page / deny");
+    bullet(p.textDim, "hold A: menu"); gap();
+    bullet(p.textDim, "shake = dizzy");
+    bullet(p.textDim, "face-down = nap");
   }
+  spr.setTextSize(1);
 }
 
 void drawPet() {
