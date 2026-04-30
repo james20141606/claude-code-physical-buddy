@@ -97,6 +97,24 @@ def main():
     except Exception:
         sys.exit(0)
 
+    # Honour Claude Code's permission_mode so the buddy doesn't fight the
+    # user's chosen mode.  Set BUDDY_FORCE=1 to override and gate every
+    # tool call through the device regardless of mode.
+    #
+    #   bypassPermissions  -> exit 0 for everything (skip all prompts)
+    #   acceptEdits + Edit/Write/MultiEdit/NotebookEdit -> exit 0
+    #   acceptEdits + Bash/WebFetch -> still gate via buddy
+    #   plan -> exit 0 (no tool actually runs)
+    if os.environ.get("BUDDY_FORCE") != "1":
+        mode = event.get("permission_mode") or event.get("permissionMode") or ""
+        tool_name = event.get("tool_name") or event.get("tool") or ""
+        if mode == "bypassPermissions" or mode == "plan":
+            sys.exit(0)
+        if mode == "acceptEdits" and tool_name in (
+            "Edit", "Write", "MultiEdit", "NotebookEdit"
+        ):
+            sys.exit(0)
+
     tool = event.get("tool_name") or event.get("tool") or "tool"
     tool_input = event.get("tool_input") or {}
     hint = _hint(tool, tool_input)
