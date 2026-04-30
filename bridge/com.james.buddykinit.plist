@@ -6,20 +6,15 @@
   <key>Label</key>
   <string>com.james.buddykinit</string>
 
-  <!-- Renew the FILE-based Kerberos cache every 12 h so SSH (and
-       therefore deploy-remote.sh / health-watch's remote sync) keeps
-       working without a manual kinit.  kinit -R requires the cache
-       to still hold a renewable TGT (default lifetime ~7 days); when
-       that expires you'll get a notification and need to re-kinit
-       with your password manually:
-
-         echo '<pwd>' | kinit -c FILE:/tmp/krb5cc_buddy $KRB_USER
-  -->
+  <!-- Renew the FILE-based Kerberos cache every 12 h.
+       The wrapper script tries `kinit -R` first (cheap, password-free)
+       and falls back to a full kinit using BUDDY_KRB_USER / BUDDY_KRB_PASS
+       sourced from ~/.zshrc (chmod 600).  Neither file in the repo
+       contains the secret — only the user's local shell rc does. -->
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>-c</string>
-    <string>/usr/bin/kinit -c FILE:/tmp/krb5cc_buddy -R 2>/tmp/buddykinit.err || /usr/bin/osascript -e 'display notification "Kerberos ticket renewal failed - run: echo &lt;pwd&gt; | kinit -c FILE:/tmp/krb5cc_buddy $KRB_USER" with title "Buddy Bridge"' &gt;/dev/null 2&gt;&amp;1</string>
+    <string>/Users/bytedance/buddy/bridge/krb-renew.sh</string>
   </array>
 
   <key>RunAtLoad</key><true/>
