@@ -57,6 +57,10 @@ uint8_t msgScroll = 0;
 uint16_t lastLineGen = 0;
 char     lastPromptId[40] = "";
 uint32_t lastInteractMs = 0;
+// Completion banner — populated on rising edge of tama.recentlyCompleted,
+// rendered as an overlay over PET/INFO/menu/normal pages for 3 s.
+uint32_t completionBannerUntil = 0;
+char     completionBannerMsg[24] = "";
 bool     dimmed = false;
 bool     screenOff = false;
 bool     swallowBtnA = false;
@@ -1144,6 +1148,11 @@ void loop() {
     delay(80);
     beep(3200, 80);   // two-note up-chirp, clearly distinct from approval beep
     triggerOneShot(P_CELEBRATE, 3000);
+    // Snapshot the msg for a banner overlay that shows for 3s on top of
+    // whatever page (PET/INFO/menu) the user is currently viewing.
+    strncpy(completionBannerMsg, tama.msg, sizeof(completionBannerMsg) - 1);
+    completionBannerMsg[sizeof(completionBannerMsg) - 1] = 0;
+    completionBannerUntil = millis() + 3000;
   }
   _lastCompleted = tama.recentlyCompleted;
 
@@ -1380,6 +1389,27 @@ void loop() {
     if (resetOpen) drawReset();
     else if (settingsOpen) drawSettings();
     else if (menuOpen) drawMenu();
+    // Completion banner — draws on top of whatever page is active so the
+    // user sees the per-session "done <name> <Ntk>" headline even while
+    // staring at PET/INFO. Lasts 3 s after the rising edge fires above.
+    if ((int32_t)(millis() - completionBannerUntil) < 0
+        && completionBannerMsg[0]) {
+      const Palette& p = characterPalette();
+      const int BAR_H = 38;
+      const int BAR_Y = (H - BAR_H) / 2;
+      spr.fillRect(0, BAR_Y, W, BAR_H, GREEN);
+      spr.drawFastHLine(0, BAR_Y, W, p.text);
+      spr.drawFastHLine(0, BAR_Y + BAR_H - 1, W, p.text);
+      int len = strlen(completionBannerMsg);
+      int sz = 2;
+      if (len * 12 > W - 8) sz = 1;
+      spr.setTextSize(sz);
+      spr.setTextColor(0x0000, GREEN);
+      int tw = len * 6 * sz;
+      spr.setCursor((W - tw) / 2, BAR_Y + (BAR_H - 8 * sz) / 2);
+      spr.print(completionBannerMsg);
+      spr.setTextSize(1);
+    }
     spr.pushSprite(0, 0);
   }
 
