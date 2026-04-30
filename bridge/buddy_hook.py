@@ -97,18 +97,32 @@ def main():
     except Exception:
         sys.exit(0)
 
+    # Quick global kill switch. Set BUDDY_DISABLE=1 in your shell env to
+    # exit 0 unconditionally — useful if you want bypass mode to truly
+    # bypass without removing the hook from settings.json.
+    if os.environ.get("BUDDY_DISABLE") == "1":
+        sys.exit(0)
+
+    # Debug: dump every event to a log file so we can see what fields
+    # Claude Code actually passes (especially whether permission_mode
+    # is present and what it's named).
+    if os.environ.get("BUDDY_DEBUG", "1") == "1":
+        try:
+            with open("/tmp/buddy-hook-events.log", "a") as f:
+                f.write(json.dumps(event) + "\n")
+        except Exception:
+            pass
+
     # Honour Claude Code's permission_mode so the buddy doesn't fight the
     # user's chosen mode.  Set BUDDY_FORCE=1 to override and gate every
     # tool call through the device regardless of mode.
-    #
-    #   bypassPermissions  -> exit 0 for everything (skip all prompts)
-    #   acceptEdits + Edit/Write/MultiEdit/NotebookEdit -> exit 0
-    #   acceptEdits + Bash/WebFetch -> still gate via buddy
-    #   plan -> exit 0 (no tool actually runs)
     if os.environ.get("BUDDY_FORCE") != "1":
-        mode = event.get("permission_mode") or event.get("permissionMode") or ""
+        mode = (event.get("permission_mode")
+                or event.get("permissionMode")
+                or event.get("mode")
+                or "")
         tool_name = event.get("tool_name") or event.get("tool") or ""
-        if mode == "bypassPermissions" or mode == "plan":
+        if mode in ("bypassPermissions", "bypass", "plan"):
             sys.exit(0)
         if mode == "acceptEdits" and tool_name in (
             "Edit", "Write", "MultiEdit", "NotebookEdit"
