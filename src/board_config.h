@@ -50,10 +50,18 @@
   #define CLOCK_TEMP_Y          270
 
   // PET page typography.  PET_TOP=110 accounts for the scale-2 peek pet.
+  // Bottom stats (Lv, approved, denied, …) stay at size 1 so they read
+  // as tertiary; the upper visual rows (mood/fed/energy) scale up via
+  // PET_LABEL_SZ + PET_HEART_R / PET_DOT_R / PET_BAR_*.
   #define PET_HEADER_SZ         2
-  #define PET_STAT_BODY_SZ      2
-  #define PET_STAT_LINE_H       18
+  #define PET_STAT_BODY_SZ      1
+  #define PET_STAT_LINE_H       10
   #define PET_TOP               110
+  #define PET_LABEL_SZ          2     // mood/fed/energy labels
+  #define PET_HEART_R           4     // big hearts on mood row (was 2)
+  #define PET_DOT_R             4     // big dots on fed row (was 2)
+  #define PET_BAR_W             12    // bigger bars on energy row
+  #define PET_BAR_H             8
 
   // LED — Core2 has no GPIO indicator LED; use the AXP-driven green
   // side LED via M5.Power.setLed().
@@ -98,6 +106,11 @@
   #define PET_STAT_BODY_SZ      1
   #define PET_STAT_LINE_H       10
   #define PET_TOP               70
+  #define PET_LABEL_SZ          1
+  #define PET_HEART_R           2
+  #define PET_DOT_R             2
+  #define PET_BAR_W             9
+  #define PET_BAR_H             6
 
   // StickC Plus has a red GPIO10 LED, active-low.
   #define LED_USES_POWER_API    0

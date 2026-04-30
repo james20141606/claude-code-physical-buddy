@@ -51,7 +51,8 @@ enum DisplayMode { DISP_NORMAL, DISP_PET, DISP_INFO, DISP_COUNT };
 uint8_t displayMode = DISP_NORMAL;
 uint8_t infoPage = 0;
 uint8_t petPage = 0;
-const uint8_t PET_PAGES = 2;
+// Page 0 = stats, page 1 = mechanics (MOOD/FED/ENERGY), page 2 = controls.
+const uint8_t PET_PAGES = 3;
 uint8_t msgScroll = 0;
 uint16_t lastLineGen = 0;
 char     lastPromptId[40] = "";
@@ -818,66 +819,87 @@ static void drawApproval() {
   spr.setTextSize(1);
 }
 
-static void tinyHeart(int x, int y, bool filled, uint16_t col) {
+// Heart at parameterized radius. r=2 → original tiny heart (StickC Plus
+// scale); r=4 → about 16×14 px for Core2's bigger screen.
+static void drawHeart(int x, int y, int r, bool filled, uint16_t col) {
   if (filled) {
-    spr.fillCircle(x - 2, y, 2, col);
-    spr.fillCircle(x + 2, y, 2, col);
-    spr.fillTriangle(x - 4, y + 1, x + 4, y + 1, x, y + 5, col);
+    spr.fillCircle(x - r, y, r, col);
+    spr.fillCircle(x + r, y, r, col);
+    spr.fillTriangle(x - 2*r, y + 1, x + 2*r, y + 1, x, y + r * 2 + 1, col);
   } else {
-    spr.drawCircle(x - 2, y, 2, col);
-    spr.drawCircle(x + 2, y, 2, col);
-    spr.drawLine(x - 4, y + 1, x, y + 5, col);
-    spr.drawLine(x + 4, y + 1, x, y + 5, col);
+    spr.drawCircle(x - r, y, r, col);
+    spr.drawCircle(x + r, y, r, col);
+    spr.drawLine(x - 2*r, y + 1, x, y + r * 2 + 1, col);
+    spr.drawLine(x + 2*r, y + 1, x, y + r * 2 + 1, col);
   }
 }
 
 static void drawPetStats(const Palette& p) {
   const int TOP = PET_TOP;
   spr.fillRect(0, TOP, W, H - TOP, p.bg);
-  spr.setTextSize(1);
-  int y = TOP + 16;
+
+  // Visual rows (mood / fed / energy) at PET_LABEL_SZ. Sizes for the
+  // hearts / dots / bars come from board_config so Core2 can have
+  // chunkier markers without breaking the StickC layout. Start a bit
+  // lower than the original 16px offset to give the bigger pet above
+  // the page some breathing room.
+  spr.setTextSize(PET_LABEL_SZ);
+  int y = TOP + (PET_LABEL_SZ == 2 ? 30 : 16);
+  // Step between the three rows scales with the visual marker size so
+  // the rows don't crowd each other when the markers grow.
+  const int ROW_STEP = (PET_LABEL_SZ == 2 ? 32 : 20);
+  // Where the markers begin horizontally — "energy" at size-2 is the
+  // longest label (6 chars × 12 px) so push markers right of x=80.
+  const int MARK_X = (PET_LABEL_SZ == 2 ? 90 : 54);
+  const int MARK_X_FED = (PET_LABEL_SZ == 2 ? 70 : 38);
+  const int HEART_SP = PET_HEART_R * 5;       // 4×5 = 20 (Core2), 2×5=10 (Plus)
+  const int DOT_SP   = PET_DOT_R * 4;         // 4×4 = 16 (Core2), 2×4=8 (Plus, was 9)
+  const int BAR_SP   = PET_BAR_W + 4;
 
   spr.setTextColor(p.textDim, p.bg);
   spr.setCursor(6, y - 2); spr.print("mood");
   uint8_t mood = statsMoodTier();
   uint16_t moodCol = (mood >= 3) ? RED : (mood >= 2) ? HOT : p.textDim;
-  for (int i = 0; i < 4; i++) tinyHeart(54 + i * 16, y + 2, i < mood, moodCol);
+  for (int i = 0; i < 4; i++)
+    drawHeart(MARK_X + i * HEART_SP, y + 2 + (PET_LABEL_SZ == 2 ? 4 : 0),
+              PET_HEART_R, i < mood, moodCol);
 
-  y += 20;
+  y += ROW_STEP;
   spr.setCursor(6, y - 2); spr.print("fed");
   uint8_t fed = statsFedProgress();
   for (int i = 0; i < 10; i++) {
-    int px = 38 + i * 9;
-    if (i < fed) spr.fillCircle(px, y + 1, 2, p.body);
-    else spr.drawCircle(px, y + 1, 2, p.textDim);
+    int px = MARK_X_FED + i * DOT_SP;
+    int py = y + (PET_LABEL_SZ == 2 ? 5 : 1);
+    if (i < fed) spr.fillCircle(px, py, PET_DOT_R, p.body);
+    else         spr.drawCircle(px, py, PET_DOT_R, p.textDim);
   }
 
-  y += 20;
+  y += ROW_STEP;
   spr.setCursor(6, y - 2); spr.print("energy");
   uint8_t en = statsEnergyTier();
   uint16_t enCol = (en >= 4) ? 0x07FF : (en >= 2) ? 0xFFE0 : HOT;
   for (int i = 0; i < 5; i++) {
-    int px = 54 + i * 13;
-    if (i < en) spr.fillRect(px, y - 2, 9, 6, enCol);
-    else spr.drawRect(px, y - 2, 9, 6, p.textDim);
+    int px = MARK_X + i * BAR_SP;
+    int py = y - (PET_LABEL_SZ == 2 ? 0 : 2);
+    if (i < en) spr.fillRect(px, py, PET_BAR_W, PET_BAR_H, enCol);
+    else        spr.drawRect(px, py, PET_BAR_W, PET_BAR_H, p.textDim);
   }
+  spr.setTextSize(1);
 
-  y += 24;
+  // Lv badge + bottom counters at size 1.
+  y += (PET_LABEL_SZ == 2 ? 28 : 24);
   spr.fillRoundRect(6, y - 2, 42, 14, 3, p.body);
   spr.setTextColor(p.bg, p.body);
   spr.setCursor(11, y + 1); spr.printf("Lv %u", stats().level);
 
-  y += 20;
+  y += 18;
   spr.setTextSize(PET_STAT_BODY_SZ);
   spr.setTextColor(p.textDim, p.bg);
   const int LH = PET_STAT_LINE_H;
-  spr.setCursor(6, y);
-  spr.printf("approved %u", stats().approvals);
-  spr.setCursor(6, y + LH);
-  spr.printf("denied   %u", stats().denials);
+  spr.setCursor(6, y);                spr.printf("approved %u", stats().approvals);
+  spr.setCursor(6, y + LH);           spr.printf("denied   %u", stats().denials);
   uint32_t nap = stats().napSeconds;
-  spr.setCursor(6, y + 2*LH);
-  spr.printf("napped   %luh%02lum", nap/3600, (nap/60)%60);
+  spr.setCursor(6, y + 2*LH);         spr.printf("napped   %luh%02lum", nap/3600, (nap/60)%60);
   auto tokFmt = [&](const char* label, uint32_t v, int yPx) {
     spr.setCursor(6, yPx);
     if (v >= 1000000)   spr.printf("%s%lu.%luM", label, v/1000000, (v/100000)%10);
@@ -889,43 +911,63 @@ static void drawPetStats(const Palette& p) {
   spr.setTextSize(1);
 }
 
-static void drawPetHowTo(const Palette& p) {
-  const int TOP = 70;
+// Page 1 = mechanics (MOOD/FED/ENERGY), page 2 = controls.
+static void drawPetHowTo(const Palette& p, uint8_t subPage) {
+  const int TOP = PET_TOP;
   spr.fillRect(0, TOP, W, H - TOP, p.bg);
   spr.setTextSize(1);
-  int y = TOP + 2;
+  // Skip past the PET header (drawn AFTER this function returns) by
+  // reserving header_height + gap. PET_HEADER_SZ * 8 + 4 covers both
+  // the size-1 (Plus) and size-2 (Core2) header heights.
+  int y = TOP + 2 + PET_HEADER_SZ * 8 + 6;
   auto ln = [&](uint16_t c, const char* s) {
-    spr.setTextColor(c, p.bg); spr.setCursor(6, y); spr.print(s); y += 9;
+    spr.setTextColor(c, p.bg); spr.setCursor(6, y); spr.print(s); y += 11;
   };
-  auto gap = [&]() { y += 4; };
+  auto gap = [&]() { y += 6; };
 
-  y += 12;  // room for the PET header drawn by drawPet()
+  if (subPage == 0) {
+    spr.setTextSize(2);
+    spr.setTextColor(p.body, p.bg);
+    spr.setCursor(6, y); spr.print("MOOD"); y += 18;
+    spr.setTextSize(1);
+    ln(p.textDim, " approve fast = up");
+    ln(p.textDim, " deny lots = down"); gap();
 
-  ln(p.body,    "MOOD");
-  ln(p.textDim, " approve fast = up");
-  ln(p.textDim, " deny lots = down"); gap();
+    spr.setTextSize(2);
+    spr.setTextColor(p.body, p.bg);
+    spr.setCursor(6, y); spr.print("FED"); y += 18;
+    spr.setTextSize(1);
+    ln(p.textDim, " 50K tokens =");
+    ln(p.textDim, " level up + confetti"); gap();
 
-  ln(p.body,    "FED");
-  ln(p.textDim, " 50K tokens =");
-  ln(p.textDim, " level up + confetti"); gap();
-
-  ln(p.body,    "ENERGY");
-  ln(p.textDim, " face-down to nap");
-  ln(p.textDim, " refills to full"); gap();
-
-  ln(p.textDim, "idle 30s = off");
-  ln(p.textDim, "any button = wake"); gap();
-
-  ln(p.textDim, "A: screens  B: page");
-  ln(p.textDim, "hold A: menu");
+    spr.setTextSize(2);
+    spr.setTextColor(p.body, p.bg);
+    spr.setCursor(6, y); spr.print("ENERGY"); y += 18;
+    spr.setTextSize(1);
+    ln(p.textDim, " face-down to nap");
+    ln(p.textDim, " refills to full");
+  } else {
+    spr.setTextSize(2);
+    spr.setTextColor(p.body, p.bg);
+    spr.setCursor(6, y); spr.print("CONTROLS"); y += 22;
+    spr.setTextSize(1);
+    ln(p.textDim, "idle 30s = screen off");
+    ln(p.textDim, "any button = wake"); gap();
+    ln(p.textDim, "A: cycle screens");
+    ln(p.textDim, "B: next page / deny");
+    ln(p.textDim, "hold A: menu"); gap();
+    ln(p.textDim, "shake = dizzy");
+    ln(p.textDim, "face-down = nap");
+  }
 }
 
 void drawPet() {
   const Palette& p = characterPalette();
   int y = PET_TOP;
 
-  if (petPage == 0) drawPetStats(p);
-  else drawPetHowTo(p);
+  if (petPage == 0)      drawPetStats(p);
+  else if (petPage == 1) drawPetHowTo(p, 0);   // mechanics
+  else                   drawPetHowTo(p, 1);   // controls
 
   // Header on top of whichever page drew — title left, counter right
   spr.setTextSize(PET_HEADER_SZ);
