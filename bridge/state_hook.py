@@ -165,31 +165,54 @@ def main():
     except Exception:
         pass
 
-    # Headline content for the firmware's full-screen completion banner.
-    # The buddy renders this with the basic ASCII font (no CJK glyphs),
-    # so we strip non-ASCII to avoid box/garbage characters.  Format:
+    # Multi-line full-screen banner content the firmware renders on
+    # completion.  Lines are \n-separated, ASCII-only (the firmware
+    # uses the default font with no CJK glyphs).
     #
-    #   "<project> <sid4> <tokens>"
-    #
-    # where <project> is the cwd basename, <sid4> is the first 4 hex
-    # chars of the session_id (so multiple concurrent sessions in the
-    # same project still distinguish), and <tokens> is the formatted
-    # output count (e.g. 1.4M).
+    #   line 1: "<LOC>: <project> <sid4>"     where + which session
+    #   line 2: "<task summary>"              what was just done
+    #   line 3: "<tokens> · <Nmsgs>"          stats this turn
     cwd = event.get("cwd", "")
     proj_full = project_label(cwd)
     proj_ascii = "".join(c for c in proj_full if c.isascii() and c != " ")
     proj_ascii = proj_ascii[:14] or "?"
     sid4 = (event.get("session_id") or "")[:4] or "----"
+
+    # LOCAL vs REMOTE: any non-Darwin uname implies the hook is running
+    # on a server (we expect the byted workspace to be Linux).  Could
+    # also peek at cwd starting with /home/ but uname is more reliable.
+    import socket
+    is_remote = os.uname().sysname != "Darwin"
+    if is_remote:
+        host = socket.gethostname().split(".")[0][:10]
+        location = f"REMOTE {host}"
+    else:
+        location = "LOCAL"
+
+    header = f"{location}: {proj_ascii} {sid4}"
+
+    # Brief summary of what the assistant just said.  Strip markdown
+    # markers / emojis / CJK so it renders cleanly on the size-2 font.
+    last = event.get("last_assistant_message") or ""
+    s = last.replace("\n", " ").replace("\r", " ")
+    for tok in ("**", "##", "##", "`", ">", "*", "•", "—", "─"):
+        s = s.replace(tok, "")
+    s = "".join(c for c in s if c.isascii() and c.isprintable())
+    s = " ".join(s.split())
+    summary = s.strip()[:80] or "(silent turn)"
+
     tok = fmt_tokens(sess_out)
+    stats = f"{tok} tokens / {sess_n}msg"
+
+    banner_text = f"{header}\n{summary}\n{stats}"
     msg = f"{proj_ascii} {sid4} {tok}"[:46]
 
     body = {
         "tokens_today": today_out_all,
         "tokens_total": all_out_all,    # display-only on PET stats line
-        "msg":          msg,
+        "msg":          msg,            # short fallback for HUD strip
+        "banner":       banner_text,    # multi-line full-screen overlay
         "entries":      [],             # force HUD into placeholder branch
-                                        # so the headline msg is the big
-                                        # auto-fit text on screen
         "running":      0,              # turn just ended
         "completed":    True,           # triggers the celebrate animation
     }

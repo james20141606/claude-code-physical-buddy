@@ -15,6 +15,9 @@ struct TamaState {
   char     msg[48];        // bumped 24→48 so the completion banner can
                            // hold "done {project} {sid4} {tokens}" plus
                            // future labels comfortably
+  char     banner[160];    // multi-line completion banner content,
+                           // \n-separated: "header\nsummary\nstats"
+                           // pushed as JSON "banner" field by state_hook
   bool     connected;
   char     lines[8][92];
   uint8_t  nLines;
@@ -107,6 +110,12 @@ static void _applyJson(const char* line, TamaState* out) {
   // tokens_total: pure display, never feeds NVS level-up. Lets the bridge
   // push a real all-time tally without scrambling stats().tokens.
   out->tokensTotal = doc["tokens_total"] | out->tokensTotal;
+  // banner: multi-line completion overlay content from state_hook
+  const char* bn = doc["banner"];
+  if (bn) {
+    strncpy(out->banner, bn, sizeof(out->banner) - 1);
+    out->banner[sizeof(out->banner) - 1] = 0;
+  }
   const char* m = doc["msg"];
   if (m) { strncpy(out->msg, m, sizeof(out->msg)-1); out->msg[sizeof(out->msg)-1]=0; }
   JsonArray la = doc["entries"];

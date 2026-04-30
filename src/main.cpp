@@ -58,12 +58,11 @@ uint16_t lastLineGen = 0;
 char     lastPromptId[40] = "";
 uint32_t lastInteractMs = 0;
 // Completion banner — populated on rising edge of tama.recentlyCompleted.
-// Full-screen overlay that shows the per-session "done <X>" headline for
-// 30 s or until the user dismisses it by pressing A.  A new completion
-// replaces the current banner.
+// Full-screen overlay; lives 5 min or until the user dismisses with A.
+// New completion replaces the current banner.
 uint32_t completionBannerUntil = 0;
-char     completionBannerMsg[48] = "";
-const uint32_t COMPLETION_BANNER_MS = 30000;
+char     completionBannerText[160] = "";   // multi-line, \n-separated
+const uint32_t COMPLETION_BANNER_MS = 5UL * 60UL * 1000UL;   // 5 minutes
 bool     dimmed = false;
 bool     screenOff = false;
 bool     swallowBtnA = false;
@@ -1169,8 +1168,11 @@ void loop() {
       delay(80);
       beep(3200, 80);
       triggerOneShot(P_CELEBRATE, 3000);
-      strncpy(completionBannerMsg, tama.msg, sizeof(completionBannerMsg) - 1);
-      completionBannerMsg[sizeof(completionBannerMsg) - 1] = 0;
+      // Prefer the multi-line tama.banner if state_hook populated it;
+      // fall back to the single-line msg for compatibility.
+      const char* src = tama.banner[0] ? tama.banner : tama.msg;
+      strncpy(completionBannerText, src, sizeof(completionBannerText) - 1);
+      completionBannerText[sizeof(completionBannerText) - 1] = 0;
       completionBannerUntil = millis() + COMPLETION_BANNER_MS;
       _lastFiredHash = msgHash;
       _lastFireMs = millis();
@@ -1265,10 +1267,10 @@ void loop() {
       // when the green DONE overlay is up just dismisses it. We don't
       // approve a prompt, cycle screens, etc. on that same press.
       bool bannerActive = (int32_t)(millis() - completionBannerUntil) < 0
-                          && completionBannerMsg[0];
+                          && completionBannerText[0];
       if (bannerActive) {
         completionBannerUntil = 0;
-        completionBannerMsg[0] = 0;
+        completionBannerText[0] = 0;
         beep(1600, 30);
         btnALong = false;
         swallowBtnA = false;
@@ -1424,37 +1426,85 @@ void loop() {
     if (resetOpen) drawReset();
     else if (settingsOpen) drawSettings();
     else if (menuOpen) drawMenu();
-    // Completion banner — full-screen overlay on top of whatever page is
-    // active.  Lasts 30s after rising edge unless the user dismisses
-    // with A or a new completion replaces it.  Pure ASCII rendering
-    // (msg should be ASCII-only from the bridge); no efont/CJK setup
-    // needed.  Big "DONE" header + msg + dismiss hint.
+    // Completion banner — full-screen overlay, multi-line.
+    //   line 0 (size 2):   "LOCAL: buddy 586a"   — where + project + sid
+    //   line 1+ (size 2):  brief task summary, wraps as needed
+    //   second-to-last:    "1.4M tokens · 23msg" — stats
+    // Lines are \n-separated in completionBannerText.  ASCII-only.
     if ((int32_t)(millis() - completionBannerUntil) < 0
-        && completionBannerMsg[0]) {
+        && completionBannerText[0]) {
       spr.fillRect(0, 0, W, H, GREEN);
       spr.setTextColor(0x0000, GREEN);
-      spr.setTextDatum(MC_DATUM);
 
       // Big "DONE" header
+      spr.setTextDatum(MC_DATUM);
       spr.setTextSize(5);
-      spr.drawString("DONE", W / 2, 50);
+      spr.drawString("DONE", W / 2, 32);
+      spr.drawFastHLine(16, 70, W - 32, 0x0000);
 
-      // Decorative divider
-      spr.drawFastHLine(20, 90, W - 40, 0x0000);
+      // Body — render each \n-delimited line.  Header line at size 2,
+      // body at size 2 with word wrap, stats at size 1.
+      int y = 92;
+      const char* p = completionBannerText;
+      uint8_t lineIdx = 0;
+      while (*p && y < H - 30) {
+        // Extract one line
+        const char* end = strchr(p, '\n');
+        size_t lineLen = end ? (size_t)(end - p) : strlen(p);
+        // Copy into a stack buffer to terminate
+        char line[80];
+        if (lineLen >= sizeof(line)) lineLen = sizeof(line) - 1;
+        memcpy(line, p, lineLen);
+        line[lineLen] = 0;
 
-      // Message — auto-fit size 3 → 2 → 1 based on length
-      int len = strlen(completionBannerMsg);
-      int sz = 3;
-      if (len * 18 > W - 16) sz = 2;
-      if (len * 12 > W - 8)  sz = 1;
-      spr.setTextSize(sz);
-      // Center vertically in the middle band
-      spr.drawString(completionBannerMsg, W / 2, H / 2 + 10);
+        if (lineIdx == 0) {
+          // Header line: size 2, bold-ish via simple draw
+          spr.setTextSize(2);
+          spr.drawString(line, W / 2, y + 8);
+          y += 24;
+        } else {
+          // Body lines: size 2 word-wrap to ~19 chars/line at 240 wide
+          spr.setTextSize(2);
+          // Simple greedy wrap: split on spaces, fit ~19 chars
+          char buf[20];
+          int bi = 0;
+          const char* w = line;
+          while (*w) {
+            // Find next word
+            while (*w == ' ') w++;
+            const char* ws = w;
+            while (*w && *w != ' ') w++;
+            size_t wlen = w - ws;
+            if (bi > 0 && bi + wlen + 1 > 19) {
+              buf[bi] = 0;
+              spr.drawString(buf, W / 2, y + 8);
+              y += 22;
+              bi = 0;
+              if (y > H - 50) break;
+            }
+            if (wlen >= 19) wlen = 18;
+            if (bi > 0) buf[bi++] = ' ';
+            memcpy(buf + bi, ws, wlen);
+            bi += wlen;
+          }
+          if (bi > 0 && y <= H - 50) {
+            buf[bi] = 0;
+            spr.drawString(buf, W / 2, y + 8);
+            y += 22;
+          }
+        }
 
-      // "A to dismiss" footer
+        p = end ? end + 1 : p + lineLen;
+        lineIdx++;
+      }
+
+      // Time-remaining hint + dismiss footer
       spr.setTextSize(1);
-      spr.setTextColor(0x0000, GREEN);
-      spr.drawString("press A to dismiss", W / 2, H - 18);
+      uint32_t remainMs = completionBannerUntil - millis();
+      char foot[32];
+      snprintf(foot, sizeof(foot), "press A to dismiss  %lus left",
+               (unsigned long)(remainMs / 1000));
+      spr.drawString(foot, W / 2, H - 14);
 
       spr.setTextDatum(TL_DATUM);
     }
