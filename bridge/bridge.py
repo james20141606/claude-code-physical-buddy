@@ -194,6 +194,21 @@ async def handle_notify(request: web.Request):
     return web.json_response({"decision": decision})
 
 
+async def handle_state(request: web.Request):
+    """Generic passthrough: forward arbitrary JSON state to Core2.
+    Used by the Stop hook to push token counts, session info, status
+    messages — anything in the firmware's data.h JSON schema.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON"}, status=400)
+    if not bridge.connected.is_set():
+        return web.json_response({"ok": False, "error": "offline"})
+    await bridge._send_raw(body)
+    return web.json_response({"ok": True})
+
+
 async def handle_status(_request):
     return web.json_response({
         "connected": bridge.connected.is_set(),
@@ -201,9 +216,29 @@ async def handle_status(_request):
     })
 
 
+async def heartbeat_loop():
+    """Keep the device's 'linked' indicator alive. data.h's dataConnected()
+    times out after 30s without traffic; send a small ping every 15s.
+    Also pushes wall-clock time so the firmware's clock stays in sync."""
+    import time
+    while True:
+        await asyncio.sleep(15)
+        if not bridge.connected.is_set():
+            continue
+        # Local time (epoch) + tz offset in seconds.  data.h decodes this
+        # as {"time":[epoch,tz_offset]} and calls M5.Rtc.setDateTime().
+        epoch = int(time.time())
+        tz_offset = -time.timezone if not time.daylight else -time.altzone
+        try:
+            await bridge._send_raw({"time": [epoch, tz_offset]})
+        except Exception as e:
+            log.warning(f"heartbeat failed: {e!r}")
+
+
 async def main():
     app = web.Application()
     app.router.add_post("/notify", handle_notify)
+    app.router.add_post("/state", handle_state)
     app.router.add_get("/status", handle_status)
     runner = web.AppRunner(app)
     await runner.setup()
@@ -211,8 +246,10 @@ async def main():
     await site.start()
     log.info(f"http listening on http://127.0.0.1:{HTTP_PORT}")
     log.info(f"  POST /notify  body={{tool, hint, timeout?}}  -> {{decision}}")
+    log.info(f"  POST /state   body={{any data.h fields}}     -> {{ok}}")
     log.info(f"  GET  /status                                  -> {{connected, pending}}")
     asyncio.create_task(bridge.discover_and_hold())
+    asyncio.create_task(heartbeat_loop())
     while True:
         await asyncio.sleep(3600)
 
