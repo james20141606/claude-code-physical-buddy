@@ -233,6 +233,30 @@ tools/           — generators and converters
 
 ## Availability
 
-The BLE API is only available when the desktop apps are in developer mode
-(**Help → Troubleshooting → Enable Developer Mode**). It's intended for
-makers and developers and isn't an officially supported product feature.
+This fork has **two** integration paths into Claude:
+
+1. **Claude Desktop's BLE API** (the upstream way). Requires Developer
+   Mode (**Help → Troubleshooting → Enable Developer Mode**) and uses
+   the desktop app's *Hardware Buddy* window for pairing. Only covers
+   sessions started inside the Desktop app (Cowork, embedded Claude
+   Code). Anthropic markets this as a maker-only, opt-in API.
+
+2. **The bridge in [`bridge/`](bridge/)** (added by this fork).
+   Replaces Claude Desktop on the BLE side and exposes a localhost
+   HTTP endpoint, so:
+   - **Terminal `claude` CLI** on your Mac gates `PreToolUse` through
+     the device by way of a hook in `~/.claude/settings.json`.
+   - **Remote `claude` over SSH** works through a `ssh -R 5151:...`
+     reverse tunnel. The same hook script runs on the server.
+   - **Stop hook** pushes a "done {project} {tokens}" banner to the
+     device every time the assistant finishes a turn — works in
+     `bypassPermissions` and `auto` modes too, where `PreToolUse`
+     gating is intentionally skipped.
+
+   No Developer Mode required for path 2 (the bridge owns the BLE
+   connection itself).  Disconnect Claude Desktop from the device
+   first — only one BLE central can hold the link at a time.
+
+The two paths are mutually exclusive at any given moment but can coexist
+on the same machine; flip between them by un-pairing the desktop app or
+stopping the bridge.
