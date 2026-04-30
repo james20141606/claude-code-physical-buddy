@@ -14,6 +14,16 @@
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LOG=/tmp/buddyhealth.log
+
+# Use a FILE-based Kerberos credential cache instead of the macOS KCM.
+# KCM is GUI-session-bound and inaccessible to launchd subprocesses,
+# so SSH-via-GSSAPI (the byted workspace's auth) silently fails when
+# health-watch is launched headlessly.  A FILE cache works from any
+# context.  Refresh with:
+#     echo '<password>' | kinit -c FILE:/tmp/krb5cc_buddy <user>
+# The ticket is valid 24 h, renewable up to ~7 days.  See the
+# com.james.buddykinit launchd plist for daily auto-renewal.
+export KRB5CCNAME="${KRB5CCNAME:-FILE:/tmp/krb5cc_buddy}"
 NOW() { date "+%Y-%m-%d %H:%M:%S"; }
 FORCE_NOTIFY=0
 NO_FIX=0

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.james.buddykinit</string>
+
+  <!-- Renew the FILE-based Kerberos cache every 12 h so SSH (and
+       therefore deploy-remote.sh / health-watch's remote sync) keeps
+       working without a manual kinit.  kinit -R requires the cache
+       to still hold a renewable TGT (default lifetime ~7 days); when
+       that expires you'll get a notification and need to re-kinit
+       with your password manually:
+
+         echo '<pwd>' | kinit -c FILE:/tmp/krb5cc_buddy $KRB_USER
+  -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>/usr/bin/kinit -c FILE:/tmp/krb5cc_buddy -R 2>/tmp/buddykinit.err || /usr/bin/osascript -e 'display notification "Kerberos ticket renewal failed - run: echo &lt;pwd&gt; | kinit -c FILE:/tmp/krb5cc_buddy $KRB_USER" with title "Buddy Bridge"' &gt;/dev/null 2&gt;&amp;1</string>
+  </array>
+
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>43200</integer>   <!-- 12 hours -->
+  <key>StandardOutPath</key><string>/tmp/buddykinit.out</string>
+  <key>StandardErrorPath</key><string>/tmp/buddykinit.err</string>
+</dict>
+</plist>
