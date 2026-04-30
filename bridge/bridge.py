@@ -69,6 +69,11 @@ class Bridge:
         self.connected = asyncio.Event()
         # promptId -> Future resolving with decision string
         self.pending: Dict[str, asyncio.Future] = {}
+        # Queued /state push that arrived while BLE was offline. We hold
+        # only the LATEST (most recent push) — typical use is completion
+        # notifications, where only the freshest matters. Sent right
+        # after the hello-ping when BLE comes back.
+        self.pending_state: Optional[dict] = None
         self._rx_buf = b""
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
@@ -101,6 +106,16 @@ class Bridge:
                         "waiting": 0,
                         "time": [_epoch, _tz],
                     })
+                    # Flush any state that arrived while we were
+                    # disconnected (typically a Stop-hook completion
+                    # notification fired during a reflash window).
+                    if self.pending_state:
+                        try:
+                            await self._send_raw(self.pending_state)
+                            log.info("flushed queued state on reconnect")
+                        except Exception as e:
+                            log.warning(f"flush queued state failed: {e!r}")
+                        self.pending_state = None
                     while client.is_connected:
                         await asyncio.sleep(1)
                     log.info("BLE disconnected, will reconnect")
@@ -209,13 +224,19 @@ async def handle_state(request: web.Request):
     """Generic passthrough: forward arbitrary JSON state to Core2.
     Used by the Stop hook to push token counts, session info, status
     messages — anything in the firmware's data.h JSON schema.
+
+    When BLE is offline (typically right after a reflash, or when the
+    device went out of range), the latest state is queued and replayed
+    on the next reconnect.  Most use cases push completion banners
+    where only the freshest state matters, so we hold a single slot.
     """
     try:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "invalid JSON"}, status=400)
     if not bridge.connected.is_set():
-        return web.json_response({"ok": False, "error": "offline"})
+        bridge.pending_state = body
+        return web.json_response({"ok": True, "queued": True})
     await bridge._send_raw(body)
     return web.json_response({"ok": True})
 
