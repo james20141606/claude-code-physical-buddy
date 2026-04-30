@@ -10,6 +10,7 @@ struct TamaState {
   uint8_t  sessionsWaiting;
   bool     recentlyCompleted;
   uint32_t tokensToday;
+  uint32_t tokensTotal;          // bridge-pushed all-time output, display only
   uint32_t lastUpdated;
   char     msg[24];
   bool     connected;
@@ -101,6 +102,9 @@ static void _applyJson(const char* line, TamaState* out) {
   uint32_t bridgeTokens = doc["tokens"] | 0;
   if (doc["tokens"].is<uint32_t>()) statsOnBridgeTokens(bridgeTokens);
   out->tokensToday = doc["tokens_today"] | out->tokensToday;
+  // tokens_total: pure display, never feeds NVS level-up. Lets the bridge
+  // push a real all-time tally without scrambling stats().tokens.
+  out->tokensTotal = doc["tokens_total"] | out->tokensTotal;
   const char* m = doc["msg"];
   if (m) { strncpy(out->msg, m, sizeof(out->msg)-1); out->msg[sizeof(out->msg)-1]=0; }
   JsonArray la = doc["entries"];

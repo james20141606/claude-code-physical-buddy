@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd plist to auto-start the buddy bridge on login + keep it alive.
+
+  Install:
+    cp bridge/com.james.buddybridge.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.james.buddybridge.plist
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.james.buddybridge.plist
+    rm ~/Library/LaunchAgents/com.james.buddybridge.plist
+
+  Status / logs:
+    launchctl list | grep buddybridge
+    tail -f /tmp/buddybridge.out /tmp/buddybridge.err
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.james.buddybridge</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/bytedance/buddy/bridge/.venv/bin/python</string>
+    <string>/Users/bytedance/buddy/bridge/bridge.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/bytedance/buddy/bridge</string>
+
+  <!-- Run on login, restart whenever the process exits (any reason) -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/buddybridge.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/buddybridge.err</string>
+
+  <!-- launchd by default doesn't inherit the user's PATH; set a sane one
+       so any subprocess invocations work the same as in a Terminal. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>

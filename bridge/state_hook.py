@@ -32,9 +32,9 @@ PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 LOCAL_TZ = datetime.now(timezone.utc).astimezone().tzinfo
 
 
-def tally(path: str, today_str: str) -> tuple[int, int, int]:
-    """Returns (session_output, today_output, n_assistant_msgs)."""
-    sess_out = today_out = n = 0
+def tally(path: str, today_str: str) -> tuple[int, int, int, int]:
+    """Returns (session_output, today_output, all_time_output, n_assistant_msgs)."""
+    sess_out = today_out = all_out = n = 0
     try:
         with open(path) as f:
             for line in f:
@@ -48,6 +48,7 @@ def tally(path: str, today_str: str) -> tuple[int, int, int]:
                 u = msg["usage"]
                 tok = u.get("output_tokens", 0)
                 sess_out += tok
+                all_out += tok
                 n += 1
                 ts = d.get("timestamp", "")
                 if ts.startswith(today_str):
@@ -56,7 +57,7 @@ def tally(path: str, today_str: str) -> tuple[int, int, int]:
         pass
     except Exception:
         pass
-    return sess_out, today_out, n
+    return sess_out, today_out, all_out, n
 
 
 def main():
@@ -75,14 +76,17 @@ def main():
     transcript = event.get("transcript_path")
     sess_out = sess_n = 0
     if transcript:
-        sess_out, _, sess_n = tally(transcript, today_str)
+        sess_out, _, _, sess_n = tally(transcript, today_str)
 
-    # Today's output across every Claude Code project
+    # Today + all-time output across every Claude Code project on disk.
+    # One pass, two accumulators; cheap even with hundreds of JSONLs.
     today_out_all = 0
+    all_out_all = 0
     try:
         for f in glob.glob(os.path.join(PROJECTS_DIR, "*", "*.jsonl")):
-            _, t, _ = tally(f, today_str)
+            _, t, a, _ = tally(f, today_str)
             today_out_all += t
+            all_out_all += a
     except Exception:
         pass
 
@@ -91,6 +95,7 @@ def main():
 
     body = {
         "tokens_today": today_out_all,
+        "tokens_total": all_out_all,    # display-only on PET stats line
         "msg":          msg,
         "running":      0,        # turn just ended
         "completed":    True,     # triggers the celebrate animation

@@ -12,12 +12,15 @@ Behavior:
   - "allow" -> emit hookSpecificOutput allowing the tool without
               Claude Code's own permission prompt.
   - "deny"  -> emit hookSpecificOutput denying the tool.
-  - Bridge unreachable / offline / timeout -> exit 0 silently so the
-              tool falls back to Claude Code's normal permission flow.
+  - Bridge unreachable / offline / timeout -> visible WARNING to
+              stderr and exit 0 so the tool falls back to Claude
+              Code's normal permission flow.
 
 Environment:
   BUDDY_BRIDGE_URL   POST endpoint  (default http://127.0.0.1:5151/notify)
   BUDDY_TIMEOUT      seconds to wait for a button press (default 60)
+  BUDDY_STRICT       if "1", fail closed (deny) instead of falling
+                     through when the bridge is unreachable
 """
 
 import json
@@ -28,6 +31,26 @@ import urllib.error
 
 BRIDGE_URL = os.environ.get("BUDDY_BRIDGE_URL", "http://127.0.0.1:5151/notify")
 TIMEOUT = int(os.environ.get("BUDDY_TIMEOUT", "60"))
+STRICT = os.environ.get("BUDDY_STRICT", "0") == "1"
+
+
+# ANSI colours — show up in any normal terminal, harmless if redirected
+RED = "\033[1;31m"
+YEL = "\033[1;33m"
+NC  = "\033[0m"
+
+
+def warn(msg: str):
+    """Print a high-visibility warning to stderr that the user
+    can't miss in their Claude Code transcript."""
+    sys.stderr.write(f"\n{YEL}━━━ buddy bridge: {msg}{NC}\n")
+    sys.stderr.write(f"{YEL}    falling back to Claude Code's own prompt{NC}\n\n")
+    sys.stderr.flush()
+
+
+def alarm(msg: str):
+    sys.stderr.write(f"\n{RED}━━━ buddy bridge: {msg}{NC}\n\n")
+    sys.stderr.flush()
 
 
 def _hint(tool: str, tool_input: dict) -> str:
@@ -43,6 +66,26 @@ def _hint(tool: str, tool_input: dict) -> str:
     if tool == "Grep":
         return (tool_input.get("pattern") or "")[:80]
     return json.dumps(tool_input)[:80]
+
+
+def _emit_decision(decision: str, reason: str):
+    sys.stdout.write(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": decision,
+            "permissionDecisionReason": reason,
+        }
+    }))
+
+
+def _fallback(reason: str):
+    if STRICT:
+        alarm(f"{reason} — STRICT mode, denying")
+        _emit_decision("deny", f"buddy bridge unreachable: {reason}")
+    else:
+        warn(reason)
+        # exit 0 with no stdout → Claude Code shows its normal prompt
+        sys.exit(0)
 
 
 def main():
@@ -68,30 +111,22 @@ def main():
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT + 5) as resp:
             ans = json.loads(resp.read())
+    except urllib.error.URLError as e:
+        return _fallback(f"bridge unreachable ({e.reason}); is it running?")
     except Exception as e:
-        # Bridge unreachable: don't block the user, fall back to the
-        # normal Claude Code permission flow.
-        sys.stderr.write(f"buddy_hook: bridge unreachable ({e}); falling through\n")
-        sys.exit(0)
+        return _fallback(f"bridge call failed ({e})")
 
     decision = ans.get("decision", "")
+    if decision == "offline":
+        # Bridge is up but no Core2 connected — common when the device
+        # is asleep, out of range, or paired to Claude Desktop instead.
+        return _fallback("Core2 not connected to bridge (device offline)")
     if decision == "allow":
-        sys.stdout.write(json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
-                "permissionDecisionReason": "approved on buddy device",
-            }
-        }))
+        _emit_decision("allow", "approved on buddy device")
     elif decision == "deny":
-        sys.stdout.write(json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "deny",
-                "permissionDecisionReason": "denied on buddy device",
-            }
-        }))
-    # decision="offline" or anything else: silent fallthrough, exit 0
+        _emit_decision("deny", "denied on buddy device")
+    else:
+        return _fallback(f"unexpected response: {ans}")
 
 
 if __name__ == "__main__":

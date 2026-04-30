@@ -902,7 +902,10 @@ static void drawPetStats(const Palette& p) {
     else if (v >= 1000) spr.printf("%s%lu.%luK", label, v/1000, (v/100)%10);
     else                spr.printf("%s%lu", label, v);
   };
-  tokFmt("tokens   ", stats().tokens, y + 3*LH);
+  // "tokens" = bridge-pushed all-time total (display only, no level math).
+  // Falls back to NVS-stored stats().tokens when nothing has been pushed.
+  uint32_t totalDisplay = tama.tokensTotal ? tama.tokensTotal : stats().tokens;
+  tokFmt("tokens   ", totalDisplay,    y + 3*LH);
   tokFmt("today    ", tama.tokensToday, y + 4*LH);
   spr.setTextSize(1);
 }
