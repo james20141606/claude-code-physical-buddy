@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Periodic health check — every 4 hours, runs health-watch.sh.
+  Periodic health check — every 5 minutes, runs health-watch.sh.
 
   Install:
     cp bridge/com.james.buddyhealth.plist ~/Library/LaunchAgents/
@@ -32,11 +32,15 @@
   <key>WorkingDirectory</key>
   <string>/Users/bytedance/buddy/bridge</string>
 
-  <!-- Run at load (once on login) plus every 4h = 14400s -->
+  <!-- Run at load (once on login) plus every 5 min = 300s.  Tight
+       cadence so a remote /state push that drops while the BLE bond
+       is rebuilding gets re-pushed quickly.  The script itself
+       short-circuits on fully-OK state and dedupes notifications via
+       /tmp/buddyhealth.state so we don't spam the user every 5 min. -->
   <key>RunAtLoad</key>
   <true/>
   <key>StartInterval</key>
-  <integer>14400</integer>
+  <integer>300</integer>
 
   <key>StandardOutPath</key>
   <string>/tmp/buddyhealth.out</string>

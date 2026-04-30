@@ -36,11 +36,26 @@ done
 
 log() { echo "[$(NOW)] $*" >> "$LOG"; }
 
+# Dedupe notifications across the 5-min cadence: remember the last
+# state we surfaced and only re-notify on transitions (good→bad or
+# bad→good).  Set BUDDY_HEALTH_FORCE_RENOTIFY=1 to override.
+STATE_FILE=/tmp/buddyhealth.state
+prev_state="$(cat "$STATE_FILE" 2>/dev/null || echo unknown)"
+
 notify() {
   local title="$1" body="$2"
   /usr/bin/osascript -e \
     "display notification \"${body//\"/\\\"}\" with title \"${title}\" sound name \"Funk\"" \
     >/dev/null 2>&1 || true
+}
+
+# notify_if_changed <state> <title> <body>  — fires only on transition
+notify_if_changed() {
+  local new="$1" title="$2" body="$3"
+  if [ "$new" != "$prev_state" ] || [ "${BUDDY_HEALTH_FORCE_RENOTIFY:-0}" = "1" ]; then
+    notify "$title" "$body"
+  fi
+  echo "$new" > "$STATE_FILE"
 }
 
 bridge_pid()        { /usr/bin/pgrep -f "bridge\.py" 2>/dev/null | head -1; }
@@ -145,7 +160,12 @@ if ! hook_wired;             then problems+=("hook_missing"); fi
 
 if [ ${#problems[@]} -eq 0 ]; then
   log "OK — bridge running, BLE connected, hook wired"
-  [ "$FORCE_NOTIFY" -eq 1 ] && notify "Buddy Bridge OK" "All checks passed at $(NOW)"
+  if [ "$FORCE_NOTIFY" -eq 1 ]; then
+    notify "Buddy Bridge OK" "All checks passed at $(NOW)"
+  else
+    # Transition: bad → ok announces the heal.  ok → ok is silent.
+    notify_if_changed "ok" "Buddy Bridge healed" "All checks now passing"
+  fi
   exit 0
 fi
 
@@ -182,12 +202,13 @@ if ! hook_wired;             then remaining+=("hook still missing from settings.
 
 if [ ${#remaining[@]} -eq 0 ]; then
   log "HEALED — auto-fix succeeded, all checks now passing"
-  notify "Buddy Bridge healed" "Auto-fixed: ${problems[*]}"
+  notify_if_changed "ok" "Buddy Bridge healed" "Auto-fixed: ${problems[*]}"
   exit 0
 fi
 
-# Still broken after self-heal — user needs to act.
+# Still broken after self-heal — user needs to act.  Dedupe so we
+# don't pop a notification every 5 min for the same persistent issue.
 body=$(printf '%s; ' "${remaining[@]}")
 log "FAIL — after auto-heal, still: $body"
-notify "Buddy Bridge needs attention" "$body"
+notify_if_changed "bad:$body" "Buddy Bridge needs attention" "$body"
 exit 1
