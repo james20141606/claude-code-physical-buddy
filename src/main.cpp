@@ -62,7 +62,16 @@ uint32_t lastInteractMs = 0;
 // New completion replaces the current banner.
 uint32_t completionBannerUntil = 0;
 char     completionBannerText[160] = "";   // multi-line, \n-separated
+uint32_t bannerStartedMs = 0;
+bool     bannerConfettiInit = false;
 const uint32_t COMPLETION_BANNER_MS = 5UL * 60UL * 1000UL;   // 5 minutes
+// 32 confetti particles re-seeded each new completion
+struct Confetto { int16_t x, y; int8_t dy; uint8_t hue; };
+Confetto bannerConfetti[32];
+// 8 hues that play together
+const uint16_t bannerHues[8] = {
+  0xF800, 0xFC60, 0xFFE0, 0x07E0, 0x07FF, 0x041F, 0xA01F, 0xF81F
+};
 bool     dimmed = false;
 bool     screenOff = false;
 bool     swallowBtnA = false;
@@ -1174,6 +1183,8 @@ void loop() {
       strncpy(completionBannerText, src, sizeof(completionBannerText) - 1);
       completionBannerText[sizeof(completionBannerText) - 1] = 0;
       completionBannerUntil = millis() + COMPLETION_BANNER_MS;
+      bannerStartedMs = millis();
+      bannerConfettiInit = false;   // re-seed on each new completion
       _lastFiredHash = msgHash;
       _lastFireMs = millis();
     }
@@ -1426,51 +1437,131 @@ void loop() {
     if (resetOpen) drawReset();
     else if (settingsOpen) drawSettings();
     else if (menuOpen) drawMenu();
-    // Completion banner — full-screen overlay, multi-line.
-    //   line 0 (size 2):   "LOCAL: buddy 586a"   — where + project + sid
-    //   line 1+ (size 2):  brief task summary, wraps as needed
-    //   second-to-last:    "1.4M tokens · 23msg" — stats
-    // Lines are \n-separated in completionBannerText.  ASCII-only.
+    // Completion banner — full-screen "party" overlay.
+    // Layered render order (back→front):
+    //   1. Black background
+    //   2. Animated rainbow border (4 concentric rings, hue cycles)
+    //   3. Confetti — 32 falling particles, random hues, wrap at bottom
+    //   4. Star-burst behind DONE during the first 600 ms
+    //   5. "DONE" in size-5, each letter cycles through the 8-hue table
+    //   6. \n-delimited body lines (size 2) in white with word-wrap
+    //   7. "press A to dismiss  Ns left" footer in dim cyan
     if ((int32_t)(millis() - completionBannerUntil) < 0
         && completionBannerText[0]) {
-      spr.fillRect(0, 0, W, H, GREEN);
-      spr.setTextColor(0x0000, GREEN);
+      spr.fillRect(0, 0, W, H, 0x0000);
 
-      // Big "DONE" header
+      uint32_t age = millis() - bannerStartedMs;
+      uint16_t tick = (uint16_t)(age / 32);   // ~30 fps animation phase
+
+      // ── Rainbow border (4 concentric rings, hue rotates per tick)
+      for (int b = 0; b < 4; b++) {
+        uint16_t c = bannerHues[(tick / 3 + b) & 7];
+        spr.drawRect(b, b, W - 2 * b, H - 2 * b, c);
+      }
+
+      // ── Confetti (32 particles, falling)
+      if (!bannerConfettiInit) {
+        for (int i = 0; i < 32; i++) {
+          bannerConfetti[i].x  = (int16_t)random(W - 4) + 2;
+          bannerConfetti[i].y  = (int16_t)random(H);
+          bannerConfetti[i].dy = (int8_t)(1 + random(3));   // 1..3 px/frame
+          bannerConfetti[i].hue = (uint8_t)random(8);
+        }
+        bannerConfettiInit = true;
+      }
+      for (int i = 0; i < 32; i++) {
+        bannerConfetti[i].y += bannerConfetti[i].dy;
+        if (bannerConfetti[i].y >= H - 4) {
+          bannerConfetti[i].y = 4;
+          bannerConfetti[i].x = (int16_t)random(W - 8) + 4;
+          bannerConfetti[i].hue = (uint8_t)random(8);
+        }
+        spr.fillCircle(bannerConfetti[i].x, bannerConfetti[i].y, 2,
+                       bannerHues[bannerConfetti[i].hue & 7]);
+      }
+
+      // ── Star-burst behind the DONE+cat header (first ~600 ms)
+      if (age < 600) {
+        int len = 10 + (int)(age / 9);
+        int cx = W / 2, cy = 44;
+        for (int a = 0; a < 12; a++) {
+          float ang = a * (M_PI * 2.0f / 12.0f);
+          int x2 = cx + (int)(cosf(ang) * len);
+          int y2 = cy + (int)(sinf(ang) * len);
+          spr.drawLine(cx, cy, x2, y2, 0xFFE0);
+        }
+      }
+
+      // ── ASCII cat (POSE from cat::doCelebrate) on the LEFT side,
+      //    rendered at size 1 (6×8 glyphs) so it sits ~72×40 px wide.
+      //    Each row of the art gets a different palette colour so the
+      //    cat reads as part of the festive header.
+      static const char* const CAT[5] = {
+        "    \\o/     ",
+        "   /\\_/\\    ",
+        "  ( ^   ^ ) ",
+        " /(  W   )\\ ",
+        "  (\")_(\")   "
+      };
+      static const uint16_t catCols[5] = {
+        0xFFE0, 0xC2A6, 0xC2A6, 0xC2A6, 0xC2A6   // gold arms, peach body
+      };
+      spr.setTextSize(1);
+      for (int r = 0; r < 5; r++) {
+        spr.setTextColor(catCols[r], 0x0000);
+        spr.setCursor(8, 20 + r * 8);
+        spr.print(CAT[r]);
+      }
+
+      // ── "DONE" at size 4 (was 5) on the RIGHT, beside the cat.
+      //    Each letter cycles through the 8-hue table.
+      spr.setTextSize(4);
+      const char* word = "DONE";
+      const int gW = 6 * 4;     // 24 px per glyph at size 4
+      int totalW = (int)strlen(word) * gW;
+      int xRight = 100 + (W - 100 - totalW) / 2;   // centered in the right half
+      if (xRight < 96) xRight = 96;
+      for (int i = 0; word[i]; i++) {
+        uint16_t c = bannerHues[(tick / 2 + i * 2) & 7];
+        spr.setTextColor(c, 0x0000);
+        spr.setCursor(xRight + i * gW, 28);
+        spr.write(word[i]);
+      }
+
+      // ── Wavy divider below the DONE+cat header
+      for (int xi = 16; xi < W - 16; xi++) {
+        int yo = (int)(sinf((xi + tick * 4) * 0.08f) * 1.5f);
+        spr.drawPixel(xi, 72 + yo, 0xFFE0);
+      }
+
+      // ── Body — render each \n-delimited line.
       spr.setTextDatum(MC_DATUM);
-      spr.setTextSize(5);
-      spr.drawString("DONE", W / 2, 32);
-      spr.drawFastHLine(16, 70, W - 32, 0x0000);
-
-      // Body — render each \n-delimited line.  Header line at size 2,
-      // body at size 2 with word wrap, stats at size 1.
-      int y = 92;
+      spr.setTextColor(0xFFFF, 0x0000);
+      int y = 96;
       const char* p = completionBannerText;
       uint8_t lineIdx = 0;
       while (*p && y < H - 30) {
-        // Extract one line
         const char* end = strchr(p, '\n');
         size_t lineLen = end ? (size_t)(end - p) : strlen(p);
-        // Copy into a stack buffer to terminate
         char line[80];
         if (lineLen >= sizeof(line)) lineLen = sizeof(line) - 1;
         memcpy(line, p, lineLen);
         line[lineLen] = 0;
 
         if (lineIdx == 0) {
-          // Header line: size 2, bold-ish via simple draw
+          // Header line: size 2 in bright cyan
           spr.setTextSize(2);
+          spr.setTextColor(0x07FF, 0x0000);
           spr.drawString(line, W / 2, y + 8);
           y += 24;
         } else {
-          // Body lines: size 2 word-wrap to ~19 chars/line at 240 wide
+          // Body lines: size 2 white with simple word wrap to ~19 chars
           spr.setTextSize(2);
-          // Simple greedy wrap: split on spaces, fit ~19 chars
+          spr.setTextColor(0xFFFF, 0x0000);
           char buf[20];
           int bi = 0;
           const char* w = line;
           while (*w) {
-            // Find next word
             while (*w == ' ') w++;
             const char* ws = w;
             while (*w && *w != ' ') w++;
@@ -1498,11 +1589,12 @@ void loop() {
         lineIdx++;
       }
 
-      // Time-remaining hint + dismiss footer
+      // ── Footer with countdown (dim cyan)
       spr.setTextSize(1);
+      spr.setTextColor(0x07FF, 0x0000);
       uint32_t remainMs = completionBannerUntil - millis();
-      char foot[32];
-      snprintf(foot, sizeof(foot), "press A to dismiss  %lus left",
+      char foot[40];
+      snprintf(foot, sizeof(foot), "press A to dismiss   %lus left",
                (unsigned long)(remainMs / 1000));
       spr.drawString(foot, W / 2, H - 14);
 
