@@ -1,22 +1,28 @@
 # claude-desktop-buddy-for-core2
 
-> **Got Claude Code in a terminal (local or remote)?** See
-> [`bridge/`](bridge/) for a Python bridge that replaces Claude
-> Desktop's BLE role and lets `claude` CLI sessions on your Mac or any
-> SSH'd-into server route their `PreToolUse` permission prompts to the
-> Core2.  Press A on the device to allow, B to deny — works the same
-> over a `ssh -R` reverse tunnel.
+### What this fork adds over [upstream](https://github.com/anthropics/claude-desktop-buddy)
 
-
-
-> **Core2 port** — this fork rewrites the firmware to run on the
-> **M5Stack Core2** (320×240 capacitive-touch ESP32 dev kit) instead of
-> the original M5StickC Plus. Same wire protocol, same desktop app
-> integration, bigger screen, touch buttons. See the upstream repo at
-> [anthropics/claude-desktop-buddy](https://github.com/anthropics/claude-desktop-buddy)
-> for the original StickC Plus version.
+> ### 🎯 Two boards, one source tree
+> **Builds for both M5Stack Core2 and the original M5StickC Plus.** Layout,
+> font sizes, button mapping, power-chip calls, and clock geometry all
+> branch on `BOARD_CORE2` / `BOARD_STICKC_PLUS` macros wired up in
+> [`platformio.ini`](platformio.ini) and [`src/board_config.h`](src/board_config.h).
+> The PlatformIO `default_envs` is `m5stickc-plus` so a fresh clone
+> matches upstream behaviour; build for Core2 with `pio run -e m5stack-core2`.
 >
-> What changed for Core2:
+> ### 🤖 Claude Code CLI support — local AND remote SSH
+> The upstream firmware only integrates with the Claude Desktop app's
+> embedded Cowork sessions. **This fork ships a [Python bridge](bridge/)
+> that lets terminal-based `claude` Code CLI sessions push their
+> `PreToolUse` permission prompts to the device** — and the same hook
+> works on a remote server you SSH into, by reverse-tunnelling
+> `localhost:5151` back to your Mac (`ssh -R 5151:localhost:5151 user@host`).
+> Press A on the device to approve the tool call, B to deny.
+
+---
+
+> **Core2 port details** — what changed under the hood for the
+> Core2 (320×240) target:
 > - Library swapped: `M5StickCPlus` → `M5Unified`
 > - Display: 135×240 → 240×320 portrait
 > - Buttons: physical A/B/Power → BtnA/BtnB/BtnC capacitive + BtnPWR
@@ -26,6 +32,8 @@
 > - Temperature now reads from MPU6886 IMU on-die sensor
 > - LittleFS auto-formats on first boot
 > - Pet ASCII art at scale 3, larger fonts in HUD/approval/clock
+> - PET header inlined beside the peek pet to save vertical space
+> - HOWTO split across two sub-pages so the size-2 bullets fit
 > - Defaults: owner "James", pet "Luna", species "cat"
 
 ---
