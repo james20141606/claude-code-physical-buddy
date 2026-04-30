@@ -1524,14 +1524,15 @@ void loop() {
         spr.drawPixel(xi, 72 + yo, 0xFFE0);
       }
 
-      // ── Body — render each \n-delimited line using efontCN_16 so
-      // CJK glyphs render. Wraps by walking UTF-8 codepoints and
-      // checking textWidth() so mixed ASCII+CJK text breaks at the
-      // right pixel column regardless of how many bytes per glyph.
+      // ── Body — render each \n-delimited line using efontCN_24 (24 px
+      // tall, supports both ASCII and CJK). Wraps by walking UTF-8
+      // codepoints and checking textWidth() so mixed ASCII+CJK text
+      // breaks at the right pixel column regardless of bytes per glyph.
       spr.setTextDatum(MC_DATUM);
-      spr.setFont(&fonts::efontCN_16);
+      spr.setFont(&fonts::efontCN_24);
       spr.setTextSize(1);
       const int MAX_LINE_PX = W - 20;   // 220 px usable
+      const int CJK_LH = 26;            // 24 px glyphs + 2 px gap
       int y = 96;
       const char* p = completionBannerText;
       uint8_t lineIdx = 0;
@@ -1565,8 +1566,8 @@ void loop() {
             // Overshot — flush the previous chunk and restart with
             // this codepoint on a fresh line.
             chunk[ci] = 0;
-            spr.drawString(chunk, W / 2, y + 8);
-            y += 20;
+            spr.drawString(chunk, W / 2, y + 12);
+            y += CJK_LH;
             // Restart chunk
             memcpy(chunk, w, cplen);
             chunk[cplen] = 0;
@@ -1578,8 +1579,8 @@ void loop() {
         }
         if (ci > 0 && y < H - 30) {
           chunk[ci] = 0;
-          spr.drawString(chunk, W / 2, y + 8);
-          y += (lineIdx == 0) ? 22 : 20;
+          spr.drawString(chunk, W / 2, y + 12);
+          y += CJK_LH;
         }
 
         p = end ? end + 1 : p + lineLen;

@@ -19,6 +19,13 @@ import json, os, pathlib
 p = pathlib.Path.home() / ".claude" / "settings.json"
 p.parent.mkdir(exist_ok=True)
 s = json.loads(p.read_text()) if p.exists() else {}
+
+# Inherit BUDDY_LANG from the local Mac so the remote state_hook
+# produces banner text in the user's language without manual setup
+# on each new dev workspace.  Defaults to "en" if unset locally.
+env = s.setdefault("env", {})
+env.setdefault("BUDDY_LANG", os.environ.get("BUDDY_LANG", "en"))
+
 hooks = s.setdefault("hooks", {})
 home = pathlib.Path.home()
 
