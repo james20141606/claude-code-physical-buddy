@@ -93,11 +93,14 @@ bool     napping = false;
 uint32_t napStartMs = 0;
 uint32_t promptArrivedMs = 0;
 
-// Face-down = Z-axis dominant and negative. Debounced so a toss doesn't count.
+// Face-down = Z-axis dominant in the board-specific direction. Debounced
+// so a toss doesn't count. Sign flips per board_config.h since MPU6886
+// mounting orientation differs between Core2 and StickC Plus.
 static bool isFaceDown() {
   float ax, ay, az;
   M5.Imu.getAccel(&ax, &ay, &az);
-  return az < -0.7f && fabsf(ax) < 0.4f && fabsf(ay) < 0.4f;
+  return az * FACEDOWN_Z_SIGN > 0.7f
+         && fabsf(ax) < 0.4f && fabsf(ay) < 0.4f;
 }
 
 // 0..4 → 20..100% → 51..255 in setBrightness scale (0..255)
@@ -1138,23 +1141,32 @@ void loop() {
   dataPoll(&tama);
   if (statsPollLevelUp()) triggerOneShot(P_CELEBRATE, 3000);
 
-  // Rising edge of recentlyCompleted = "Claude finished a turn" notification.
-  // Wake the screen and chirp so the user notices even if they tabbed away —
-  // critical when bypass mode means there's no in-terminal prompt to stop on.
-  static bool _lastCompleted = false;
-  if (tama.recentlyCompleted && !_lastCompleted) {
+  // recentlyCompleted = "Claude finished a turn".
+  // We deliberately don't gate on rising-edge here: the bridge's heartbeat
+  // resets the field every 15s by sending JSON without a "completed" key,
+  // but a user can finish two turns within 15s (rapid back-and-forth)
+  // and we want each one to chirp. Use a 2.5s cooldown by tracking the
+  // millis of the last fire instead.
+  static uint32_t lastCompletionFireMs = 0;
+  static uint16_t lastMsgHash = 0;
+  // Cheap msg hash — XOR of bytes — so identical re-pushes within the
+  // cooldown window are still treated as one event but a new msg chirps.
+  uint16_t msgHash = 0;
+  for (const char* p = tama.msg; *p; p++) msgHash = (msgHash * 31) ^ (uint8_t)*p;
+  bool sameMsgRecent = (msgHash == lastMsgHash)
+                    && (millis() - lastCompletionFireMs < 2500);
+  if (tama.recentlyCompleted && !sameMsgRecent) {
     wake();
     beep(2400, 60);
     delay(80);
-    beep(3200, 80);   // two-note up-chirp, clearly distinct from approval beep
+    beep(3200, 80);
     triggerOneShot(P_CELEBRATE, 3000);
-    // Snapshot the msg for a banner overlay that shows for 3s on top of
-    // whatever page (PET/INFO/menu) the user is currently viewing.
     strncpy(completionBannerMsg, tama.msg, sizeof(completionBannerMsg) - 1);
     completionBannerMsg[sizeof(completionBannerMsg) - 1] = 0;
     completionBannerUntil = millis() + 3000;
+    lastCompletionFireMs = millis();
+    lastMsgHash = msgHash;
   }
-  _lastCompleted = tama.recentlyCompleted;
 
   baseState = derive(tama);
 

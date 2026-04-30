@@ -72,6 +72,12 @@
   // side LED via M5.Power.setLed().
   #define LED_USES_POWER_API    1
 
+  // IMU axis convention — MPU6886 mounting differs across boards.
+  // Core2: screen up = az ≈ -1.0, face-down (screen on table) = az ≈ +1.0
+  // (chip's +Z points OUT through the bottom of the device).
+  // Multiplier flips sign for the face-down test.
+  #define FACEDOWN_Z_SIGN       (+1)
+
 #elif defined(BOARD_STICKC_PLUS)
   // ─── M5StickC Plus (135×240 portrait, AXP192, MPU6886, BM8563)
   #define BOARD_NAME            "M5StickC Plus"
@@ -125,6 +131,9 @@
   // StickC Plus has a red GPIO10 LED, active-low.
   #define LED_USES_POWER_API    0
   #define LED_GPIO              10
+
+  // StickC Plus: screen up = az ≈ +1.0, face-down = az ≈ -1.0
+  #define FACEDOWN_Z_SIGN       (-1)
 
 #else
   #error "Define BOARD_CORE2 or BOARD_STICKC_PLUS via platformio.ini build_flags"
