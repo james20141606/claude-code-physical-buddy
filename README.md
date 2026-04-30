@@ -60,9 +60,38 @@ waiting, and lets you approve or deny right from the device.
 
 ## Hardware
 
-The firmware targets the **M5Stack Core2** (ESP32, 320×240 capacitive
-touch screen, AXP192 power management, MPU6886 IMU, BM8563 RTC). For the
-original M5StickC Plus version see the upstream repository linked above.
+The firmware builds for both boards from the same source tree. Pick whichever
+you have — `pio run -e m5stack-core2` for the Core2, `pio run -e m5stickc-plus`
+(default) for the Plus.
+
+<table>
+  <tr>
+    <th width="50%">M5Stack Core2</th>
+    <th width="50%">M5StickC Plus</th>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://shop.m5stack.com/products/m5stack-core2-esp32-iot-development-kit-v1-1">
+        <img src="https://shop.m5stack.com/cdn/shop/files/1_df7a5c20-703a-4321-95bc-019aff65f2d1_1200x1200.webp" alt="M5Stack Core2" width="320">
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://shop.m5stack.com/products/m5stickc-plus-esp32-pico-mini-iot-development-kit">
+        <img src="https://shop.m5stack.com/cdn/shop/products/1_1200x1200.webp" alt="M5StickC Plus" width="320">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      ESP32 · 320×240 capacitive touch · AXP192 PMU · MPU6886 IMU · BM8563 RTC · speaker · SD slot<br>
+      <a href="https://shop.m5stack.com/products/m5stack-core2-esp32-iot-development-kit-v1-1">Buy on M5Stack →</a>
+    </td>
+    <td>
+      ESP32-PICO · 135×240 LCD · AXP192 PMU · MPU6886 IMU · BM8563 RTC · buzzer · IR<br>
+      <a href="https://shop.m5stack.com/products/m5stickc-plus-esp32-pico-mini-iot-development-kit">Buy on M5Stack →</a>
+    </td>
+  </tr>
+</table>
 
 ## Flashing
 
