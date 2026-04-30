@@ -962,18 +962,33 @@ void drawPet() {
 
   // Header layout: inline (beside pet, top-right) on Core2,
   // or stacked above the content on Plus.
+#if PET_HEADER_INLINE
+  // Right column x=160..240 alongside the peek-shifted pet (y≈10..90).
+  // Stack the owner-possessive and pet name on two lines at size 2 so
+  // each is readable; page counter on a third line at size 1 below.
+  size_t olen = ownerName()[0] ? strlen(ownerName()) : 0;
+  char ownerLine[28] = "";
+  if (olen) {
+    char tail = ownerName()[olen - 1];
+    bool sEnding = (tail == 's' || tail == 'S');
+    snprintf(ownerLine, sizeof(ownerLine), sEnding ? "%s'" : "%s's", ownerName());
+  }
+  spr.setTextSize(2);
+  spr.setTextColor(p.text, p.bg);
+  spr.setCursor(160, 18);
+  if (olen) spr.print(ownerLine);
+  spr.setTextColor(p.body, p.bg);
+  spr.setCursor(160, 44);
+  spr.print(petName());
+  spr.setTextSize(1);
+  spr.setTextColor(p.textDim, p.bg);
+  spr.setCursor(160, 72);
+  spr.printf("%u/%u", petPage + 1, PET_PAGES);
+#else
   spr.setTextSize(PET_HEADER_SZ);
   spr.setTextColor(p.text, p.bg);
-#if PET_HEADER_INLINE
-  // Pet shifted left by PEEK_X_OFFSET; right ~80px column free for header.
-  // x=160 starts the header; vertical center against the pet (y≈10..90).
-  spr.setCursor(160, 38);
-#else
   spr.setCursor(4, y + 2);
-#endif
   if (ownerName()[0]) {
-    // English style: names ending in 's' take just an apostrophe
-    // ("James' Luna"), not 's's ("James's Luna").
     size_t olen = strlen(ownerName());
     char tail = ownerName()[olen - 1];
     bool sEnding = (tail == 's' || tail == 'S');
@@ -982,15 +997,11 @@ void drawPet() {
     spr.print(petName());
   }
   spr.setTextColor(p.textDim, p.bg);
-#if PET_HEADER_INLINE
-  spr.setCursor(160, 56);
-  spr.printf("%u/%u", petPage + 1, PET_PAGES);
-#else
   int ctrW = (PET_HEADER_SZ == 2) ? 36 : 28;
   spr.setCursor(W - ctrW, y + 2);
   spr.printf("%u/%u", petPage + 1, PET_PAGES);
-#endif
   spr.setTextSize(1);
+#endif
 }
 
 void drawHUD() {
