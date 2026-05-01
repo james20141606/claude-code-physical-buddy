@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Persistent SSH reverse tunnel: keeps `localhost:5151` alive on the
+  remote workspace regardless of whether the user has an interactive
+  ssh session open.  Without this, claude processes already running on
+  the remote (started before any tunneled ssh) have no path back to
+  the Mac's bridge and their Stop hooks fail with Connection refused.
+
+  -N      no remote command
+  -T      no pty
+  ExitOnForwardFailure   die immediately if 5151 can't bind, so launchd
+                          respawns instead of silently flapping
+  ServerAliveInterval    keep-alive ping every 60 s; dead connections
+                          trigger ssh exit within 3 missed pings
+  KRB5CCNAME             FILE cache, refreshed by buddykinit, lets ssh
+                          authenticate from launchd's headless context
+
+  Install:
+    cp bridge/com.james.buddytunnel.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.james.buddytunnel.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.james.buddytunnel</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/ssh</string>
+    <string>-N</string>
+    <string>-T</string>
+    <string>-o</string><string>ExitOnForwardFailure=yes</string>
+    <string>-o</string><string>ServerAliveInterval=60</string>
+    <string>-o</string><string>ServerAliveCountMax=3</string>
+    <string>-o</string><string>BatchMode=yes</string>
+    <string>-R</string><string>5151:localhost:5151</string>
+    <string>candy</string>
+  </array>
+
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key><false/>
+  </dict>
+  <key>ThrottleInterval</key><integer>10</integer>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>KRB5CCNAME</key>
+    <string>FILE:/tmp/krb5cc_buddy</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/buddytunnel.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/buddytunnel.err</string>
+</dict>
+</plist>
